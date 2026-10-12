@@ -1,0 +1,10 @@
+{
+  "name": "WheelOnPalm — Automotive Service Platform",
+  "description": "All-in-one vehicle management, workshop booking, bluebook document reminders, and 24/7 roadside assistance in Nepal.",
+  "requestFramePermissions": [
+    "geolocation"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

@@ -1,0 +1,162 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default-deny catch-all safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Bootstrapped admin verification
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == '078msesp010.sadeep@pcampus.edu.np'
+        || exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function isVerifiedProvider() {
+      return isSignedIn() && (
+        isAdmin()
+        || exists(/databases/$(database)/documents/providers/$(request.auth.uid))
+      );
+    }
+
+    // Connection validation document
+    match /test/connection {
+      allow read: if true;
+    }
+
+    // USERS COLLECTION
+    match /users/{userId} {
+      allow get: if isOwner(userId) || isAdmin();
+      allow list: if isAdmin();
+      allow create: if isSignedIn() && request.auth.uid == userId;
+      allow update: if (
+        isOwner(userId) 
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'uid'])
+      ) || isAdmin();
+      allow delete: if isOwner(userId) || isAdmin();
+    }
+
+    // ADMINS COLLECTION
+    match /admins/{adminId} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // VEHICLES COLLECTION
+    match /vehicles/{vehicleId} {
+      allow get: if isOwner(resource.data.ownerId) || isAdmin() || isVerifiedProvider();
+      allow list: if isSignedIn() && (resource.data.ownerId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && request.resource.data.ownerId == request.auth.uid;
+      allow update: if (
+        isOwner(resource.data.ownerId) && request.resource.data.ownerId == resource.data.ownerId
+      ) || isAdmin();
+      allow delete: if isOwner(resource.data.ownerId) || isAdmin();
+
+      match /inspections/{inspectionId} {
+        allow read, write: if isSignedIn();
+      }
+    }
+
+    // PROVENANCE EVALUATIONS
+    match /provenanceEvaluations/{evalId} {
+      allow read, write: if isSignedIn();
+    }
+
+    // MAINTENANCE RECORDS
+    match /maintenanceRecords/{recordId} {
+      allow get: if isOwner(resource.data.userId) || isAdmin() || isVerifiedProvider();
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update: if isOwner(resource.data.userId) || isAdmin();
+      allow delete: if isOwner(resource.data.userId) || isAdmin();
+    }
+
+    // VEHICLE DOCUMENTS & BLUEBOOK
+    match /vehicleDocuments/{documentId} {
+      allow get: if isOwner(resource.data.userId) || isAdmin();
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update: if isOwner(resource.data.userId) || isAdmin();
+      allow delete: if isOwner(resource.data.userId) || isAdmin();
+    }
+
+    // SERVICE BOOKINGS
+    match /bookings/{bookingId} {
+      allow get: if isOwner(resource.data.userId) 
+        || (isVerifiedProvider() && request.auth.uid == resource.data.providerId)
+        || isAdmin();
+
+      allow list: if isSignedIn() && (
+        resource.data.userId == request.auth.uid
+        || (isVerifiedProvider() && resource.data.providerId == request.auth.uid)
+        || isAdmin()
+      );
+
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+
+      allow update: if (
+        (isOwner(resource.data.userId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'problemDescription', 'updatedAt']))
+        || (isVerifiedProvider() && request.auth.uid == resource.data.providerId)
+        || isAdmin()
+      );
+
+      allow delete: if isAdmin();
+    }
+
+    // EMERGENCY ROADSIDE ASSISTANCE
+    match /emergencyRequests/{requestId} {
+      allow get: if isOwner(resource.data.userId) || isVerifiedProvider() || isAdmin();
+      allow list: if isOwner(resource.data.userId) || isVerifiedProvider() || isAdmin();
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update: if isOwner(resource.data.userId) || isVerifiedProvider() || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // SERVICE PROVIDERS & CATALOGUE
+    match /serviceProviders/{providerId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // SPARE PARTS CATALOGUE
+    match /spareParts/{partId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // VEHICLE MARKETPLACE (BUY, SELL & RENT)
+    match /marketplaceListings/{listingId} {
+      allow read: if true; // Public marketplace
+      allow create: if isSignedIn();
+      allow update: if isOwner(resource.data.ownerId) || isAdmin();
+      allow delete: if isOwner(resource.data.ownerId) || isAdmin();
+    }
+
+    // PARTS E-COMMERCE ORDERS
+    match /partsOrders/{orderId} {
+      allow get: if isOwner(resource.data.userId) || isAdmin();
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn();
+      allow update: if isOwner(resource.data.userId) || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // AUDIT LOGS
+    match /auditLogs/{logId} {
+      allow read: if isAdmin();
+      allow write: if isSignedIn();
+    }
+  }
+}
